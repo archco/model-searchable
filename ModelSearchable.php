@@ -2,8 +2,6 @@
 
 namespace App\Support\Traits;
 
-use Illuminate\Database\Eloquent\Builder;
-
 /**
  * ModelSearchable
  *
@@ -80,6 +78,7 @@ trait ModelSearchable
         return $builder
             ->whereRaw("MATCH ({$columns}) AGAINST (? {$mode})", [$searchQuery]);
     }
+
 
     protected function getSearchableColumns()
     {
