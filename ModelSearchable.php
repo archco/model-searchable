@@ -5,10 +5,10 @@ namespace App\Support\Traits;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * The laravel eloquent trait for mysql search.
+ * ModelSearchable
  *
  * @link https://github.com/archco/model-searchable
- * @license MIT
+ * @updated 2017-07-06
  */
 trait ModelSearchable
 {
@@ -16,82 +16,69 @@ trait ModelSearchable
      * Options
      * protected $searchableColumns; // array, search target columns.
      * protected $searchMode; // string, 'like' or 'fulltext'
-     * protected $fulltextMode; // string, 'boolean' or 'natural' or 'expension'
+     * protected $fulltextMode; // string, 'boolean' or 'natural' or 'expansion'
      */
 
-    /**
-     * $searchBuilder
-     * @var \Illuminate\Database\Eloquent\Builder
-     */
-    protected $searchBuilder;
+
+    /************************************************************
+      Scopes
+    *************************************************************/
 
     /**
-     * static search
+     * search
      *
-     * @param  string $query
      * @param  \Illuminate\Database\Eloquent\Builder $builder
+     * @param  string $searchQuery
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public static function search($query, $builder = null)
+    public function scopeSearch($builder, $searchQuery)
     {
-        return (new static)->searchBindBuilder($query, $builder);
-    }
-
-    /**
-     * searchBindBuilder
-     *
-     * @param  string $query
-     * @param  \Illuminate\Database\Eloquent\Builder $builder
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function searchBindBuilder($query, $builder = null)
-    {
-        $this->setSearchBuilder($builder);
         $mode = $this->getSearchMode();
 
         if ($mode == 'fulltext') {
-            return $this->searchFulltext($query);
+            $builder->searchFulltext($searchQuery);
         } elseif ($mode == 'like') {
-            return $this->searchLike($query);
-        }
-
-        return null;
-    }
-
-    /**
-     * search 'like' mode
-     *
-     * @param  string $query
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function searchLike($query)
-    {
-        $query = $this->querySanitize($query);
-        $columns = $this->getSearchableColumns();
-        $builder = $this->getSearchBuilder();
-
-        foreach ($columns as $col) {
-            $builder->orWhere($col, 'LIKE', "%{$query}%");
+            $builder->searchLike($searchQuery);
         }
 
         return $builder;
     }
 
     /**
-     * search 'fulltext' mode
+     * searchLike
      *
-     * @param  string $query
-     * @param  string $modeName 'boolean' or 'natural' or 'expension'
+     * @param  \Illuminate\Database\Eloquent\Builder  $builder
+     * @param  string  $searchQuery
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function searchFulltext($query, $modeName = null)
+    public function scopeSearchLike($builder, $searchQuery)
     {
-        $query = $this->querySanitize($query);
-        $builder = $this->getSearchBuilder();
+        $searchQuery = $this->querySanitize($searchQuery);
+        $columns = $this->getSearchableColumns();
+
+        foreach ($columns as $col) {
+            $builder->orWhere($col, 'LIKE', "%{$searchQuery}%");
+        }
+
+        return $builder;
+    }
+
+    /**
+     * searchFulltext
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $builder
+     * @param  string  $searchQuery
+     * @param  string  $modeName  'boolean'|'natural'|'expansion'
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeSearchFulltext($builder, $searchQuery, $modeName = null)
+    {
+        $searchQuery = $this->querySanitize($searchQuery);
         $columns = implode(',', $this->getSearchableColumns());
         $mode = $this->getFulltextMode($modeName);
 
-        return $builder->whereRaw("MATCH ({$columns}) AGAINST (? {$mode})", [$query]);
+        return $builder
+            ->whereRaw("MATCH ({$columns}) AGAINST (? {$mode})", [$searchQuery]);
     }
 
     protected function getSearchableColumns()
@@ -110,7 +97,7 @@ trait ModelSearchable
         $modes = [
             'boolean' => 'IN BOOLEAN MODE',
             'natural' => 'IN NATURAL LANGUAGE MODE',
-            'expension' => 'IN NATURAL LANGUAGE MODE WITH QUERY EXPENSION'
+            'expansion' => 'IN NATURAL LANGUAGE MODE WITH QUERY EXPANSION'
         ];
 
         return $modes[$modeName];
@@ -119,15 +106,5 @@ trait ModelSearchable
     protected function querySanitize($query)
     {
         return trim($query);
-    }
-
-    protected function getSearchBuilder()
-    {
-        return $this->searchBuilder ?? static::query();
-    }
-
-    protected function setSearchBuilder($builder)
-    {
-        $this->searchBuilder = $builder;
     }
 }
