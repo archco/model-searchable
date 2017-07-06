@@ -5,8 +5,8 @@ namespace App\Support\Traits;
 /**
  * ModelSearchable
  *
+ * @date 2017-07-06
  * @link https://github.com/archco/model-searchable
- * @updated 2017-07-06
  */
 trait ModelSearchable
 {
@@ -52,10 +52,13 @@ trait ModelSearchable
     public function scopeSearchLike($builder, $searchQuery)
     {
         $searchQuery = $this->querySanitize($searchQuery);
+        $queries = explode(' ', $searchQuery);
         $columns = $this->getSearchableColumns();
 
         foreach ($columns as $col) {
-            $builder->orWhere($col, 'LIKE', "%{$searchQuery}%");
+            foreach ($queries as $query) {
+                $builder->orWhere($col, 'LIKE', "%{$query}%");
+            }
         }
 
         return $builder;
@@ -78,7 +81,6 @@ trait ModelSearchable
         return $builder
             ->whereRaw("MATCH ({$columns}) AGAINST (? {$mode})", [$searchQuery]);
     }
-
 
     protected function getSearchableColumns()
     {
