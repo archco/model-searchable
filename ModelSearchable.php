@@ -2,10 +2,12 @@
 
 namespace App\Support\Traits;
 
+use Illuminate\Support\Facades\DB;
+
 /**
  * ModelSearchable
  *
- * @date 2017-07-06
+ * @updated 2017-08-30
  * @link https://github.com/archco/model-searchable
  */
 trait ModelSearchable
@@ -16,6 +18,8 @@ trait ModelSearchable
      * protected $searchMode; // string, 'like' or 'fulltext'
      * protected $fulltextMode; // string, 'boolean' or 'natural' or 'expansion'
      */
+
+    protected $fulltextWhere = '';
 
 
     /************************************************************
@@ -77,9 +81,44 @@ trait ModelSearchable
         $searchQuery = $this->querySanitize($searchQuery);
         $columns = implode(',', $this->getSearchableColumns());
         $mode = $this->getFulltextMode($modeName);
+        $this->fulltextWhere = "MATCH ({$columns}) AGAINST ('{$searchQuery}' {$mode})";
 
         return $builder
-            ->whereRaw("MATCH ({$columns}) AGAINST (? {$mode})", [$searchQuery]);
+            ->whereRaw($this->fulltextWhere);
+    }
+
+    /**
+     * selectWithScore
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $builder
+     * @param  array  $columns
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeSelectWithScore($builder, $columns = ['*'])
+    {
+        if ($this->getSearchMode() != 'fulltext' || $this->fulltextWhere == '') {
+            return $builder;
+        } else {
+            $columns = array_merge($columns, [DB::raw("{$this->fulltextWhere} AS score")]);
+            return $builder->select($columns);
+        }
+    }
+
+    /**
+     * getWithScore
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $builder
+     * @param  array  $columns
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function scopeGetWithScore($builder, $columns = ['*'])
+    {
+        if ($this->getSearchMode() != 'fulltext' || $this->fulltextWhere == '') {
+            return $builder->get($columns);
+        } else {
+            $columns = array_merge($columns, [DB::raw("{$this->fulltextWhere} AS score")]);
+            return $builder->get($columns);
+        }
     }
 
     protected function getSearchableColumns()
