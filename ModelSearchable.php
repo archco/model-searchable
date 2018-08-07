@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
  * ModelSearchable
  *
  * @link https://github.com/archco/model-searchable
- * @version v1.0.0
+ * @version v1.0.1
  */
 trait ModelSearchable
 {
@@ -92,9 +92,13 @@ trait ModelSearchable
         $queries = explode(' ', $searchQuery);
         $columns = $this->getSearchableOptions($options)->columns;
 
-        foreach ($columns as $col) {
+        foreach ($columns as $i => $col) {
             foreach ($queries as $query) {
-                $builder->orWhere($col, 'LIKE', "%{$query}%");
+                if ($i == 0) {
+                    $builder->where($col, 'LIKE', "%{$query}%");
+                } else {
+                    $builder->orWhere($col, 'LIKE', "%{$query}%");
+                }
             }
         }
 
