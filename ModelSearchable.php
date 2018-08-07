@@ -7,40 +7,73 @@ use Illuminate\Support\Facades\DB;
 /**
  * ModelSearchable
  *
- * @updated 2017-08-30
  * @link https://github.com/archco/model-searchable
+ * @version v1.0.0
  */
 trait ModelSearchable
 {
     /**
-     * Options
-     * protected $searchableColumns; // array, search target columns.
-     * protected $searchMode; // string, 'like' or 'fulltext'
-     * protected $fulltextMode; // string, 'boolean' or 'natural' or 'expansion'
+     * Default options
+     *
+     * @var array
      */
-
+    protected $searchableDefaultOptions = [
+        'columns' => [],
+        'mode' => 'like',
+        'fulltextMode' => 'natural',
+    ];
     protected $fulltextWhere = '';
 
+    /**
+     * Options for ModelSearchable (overwrite it)
+     *
+     * @return array
+     */
+    public function searchableOptions()
+    {
+        return [
+            'columns' => [],
+            'mode' => 'like',
+            'fulltextMode' => 'natural',
+        ];
+    }
 
-    /************************************************************
-      Scopes
-    *************************************************************/
+    /**
+     * Get searchable options as object.
+     *
+     * @param array $options
+     * @return object
+     */
+    public function getSearchableOptions($options = [])
+    {
+        $options = array_merge(
+            $this->searchableDefaultOptions,
+            $this->searchableOptions(),
+            $options
+        );
+        return (object) $options;
+    }
+
+    //
+    // Query Scopes
+    //
 
     /**
      * search
      *
      * @param  \Illuminate\Database\Eloquent\Builder $builder
      * @param  string $searchQuery
+     * @param  array $options
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeSearch($builder, $searchQuery)
+    public function scopeSearch($builder, $searchQuery, $options = [])
     {
-        $mode = $this->getSearchMode();
+        $mode = $this->getSearchableOptions($options)->mode;
 
         if ($mode == 'fulltext') {
-            $builder->searchFulltext($searchQuery);
+            $builder->searchFulltext($searchQuery, $options);
         } elseif ($mode == 'like') {
-            $builder->searchLike($searchQuery);
+            $builder->searchLike($searchQuery, $options);
         }
 
         return $builder;
@@ -53,11 +86,11 @@ trait ModelSearchable
      * @param  string  $searchQuery
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeSearchLike($builder, $searchQuery)
+    public function scopeSearchLike($builder, $searchQuery, $options = [])
     {
         $searchQuery = $this->querySanitize($searchQuery);
         $queries = explode(' ', $searchQuery);
-        $columns = $this->getSearchableColumns();
+        $columns = $this->getSearchableOptions($options)->columns;
 
         foreach ($columns as $col) {
             foreach ($queries as $query) {
@@ -73,22 +106,18 @@ trait ModelSearchable
      *
      * @param  \Illuminate\Database\Eloquent\Builder  $builder
      * @param  string  $searchQuery
-     * @param  string  $modeName  'boolean'|'natural'|'expansion'
+     * @param  array  $options
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeSearchFulltext($builder, $searchQuery, $modeName = null)
+    public function scopeSearchFulltext($builder, $searchQuery, $options = [])
     {
-        $searchQuery = $this->querySanitize($searchQuery);
-        $columns = implode(',', $this->getSearchableColumns());
-        $mode = $this->getFulltextMode($modeName);
-        $this->fulltextWhere = "MATCH ({$columns}) AGAINST ('{$searchQuery}' {$mode})";
+        $this->fulltextWhere = $this->makeFulltextWhere($searchQuery, $options);
 
-        return $builder
-            ->whereRaw($this->fulltextWhere);
+        return $builder->whereRaw($this->fulltextWhere);
     }
 
     /**
-     * selectWithScore
+     * selectWithScore (for fulltext mode)
      *
      * @param  \Illuminate\Database\Eloquent\Builder  $builder
      * @param  array  $columns
@@ -96,7 +125,9 @@ trait ModelSearchable
      */
     public function scopeSelectWithScore($builder, $columns = ['*'])
     {
-        if ($this->getSearchMode() != 'fulltext' || $this->fulltextWhere == '') {
+        $opt = $this->getSearchableOptions();
+
+        if ($opt->mode != 'fulltext' || $this->fulltextWhere == '') {
             return $builder;
         } else {
             $columns = array_merge($columns, [DB::raw("{$this->fulltextWhere} AS score")]);
@@ -105,7 +136,7 @@ trait ModelSearchable
     }
 
     /**
-     * getWithScore
+     * getWithScore (for fulltext mode)
      *
      * @param  \Illuminate\Database\Eloquent\Builder  $builder
      * @param  array  $columns
@@ -113,7 +144,9 @@ trait ModelSearchable
      */
     public function scopeGetWithScore($builder, $columns = ['*'])
     {
-        if ($this->getSearchMode() != 'fulltext' || $this->fulltextWhere == '') {
+        $opt = $this->getSearchableOptions();
+
+        if ($opt->mode != 'fulltext' || $this->fulltextWhere == '') {
             return $builder->get($columns);
         } else {
             $columns = array_merge($columns, [DB::raw("{$this->fulltextWhere} AS score")]);
@@ -121,30 +154,28 @@ trait ModelSearchable
         }
     }
 
-    protected function getSearchableColumns()
+    protected function querySanitize($query)
     {
-        return $this->searchableColumns ?? [];
+        return trim($query);
     }
 
-    protected function getSearchMode()
+    protected function getFulltextMode($modeName)
     {
-        return $this->searchMode ?? 'like';
-    }
-
-    protected function getFulltextMode($modeName = null)
-    {
-        $modeName = $modeName ?? $this->fulltextMode ?? 'boolean';
         $modes = [
             'boolean' => 'IN BOOLEAN MODE',
             'natural' => 'IN NATURAL LANGUAGE MODE',
             'expansion' => 'IN NATURAL LANGUAGE MODE WITH QUERY EXPANSION'
         ];
-
         return $modes[$modeName];
     }
 
-    protected function querySanitize($query)
+    protected function makeFulltextWhere($searchQuery, $options = [])
     {
-        return trim($query);
+        $searchQuery = $this->querySanitize($searchQuery);
+        $opt = $this->getSearchableOptions($options);
+        $columns = implode(',', $opt->columns);
+        $fulltextMode = $this->getFulltextMode($opt->fulltextMode);
+
+        return "MATCH ({$columns}) AGAINST ('{$searchQuery}' {$fulltextMode})";
     }
 }
