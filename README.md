@@ -1,6 +1,6 @@
-# model-searchable
+# Model Searchable
 
-The laravel eloquent trait for mysql search.
+The trait for a laravel eloquent model that provides helpful functions for searching to a model in mysql.
 
 ## Configuration
 
